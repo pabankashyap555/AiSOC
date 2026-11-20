@@ -69,6 +69,17 @@ if [ -f /sys/fs/cgroup/cgroup.controllers ]; then
   fi
 fi
 
+# Container-to-container networking. Inside a nested container the nftables
+# backend that Debian's iptables defaults to can leave dockerd's bridge rules
+# ineffective: containers start, but cannot reach each other (kafka timing out
+# on zookeeper:2181). The legacy backend is what the docker-in-docker
+# devcontainer feature uses for the same reason.
+if [ -x /usr/sbin/iptables-legacy ]; then
+  log "using the iptables-legacy backend"
+  sudo update-alternatives --set iptables /usr/sbin/iptables-legacy >/dev/null 2>&1 || :
+  sudo update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy >/dev/null 2>&1 || :
+fi
+
 log "starting dockerd (log: $LOG)"
 sudo sh -c "nohup dockerd >'$LOG' 2>&1 &"
 
@@ -84,3 +95,8 @@ until docker info >/dev/null 2>&1; do
 done
 
 log "daemon ready after $(( TIMEOUT_SECONDS - (deadline - $(date +%s)) ))s"
+
+# dockerd sets the FORWARD policy to DROP. That is right on a shared host; here
+# the whole daemon lives inside a single-user codespace, and DROP is what
+# blocks bridge traffic when the kernel routes it through FORWARD.
+sudo iptables -P FORWARD ACCEPT 2>/dev/null || :
