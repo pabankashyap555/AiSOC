@@ -51,6 +51,24 @@ if ! sudo -n true 2>/dev/null; then
   exit 1
 fi
 
+# cgroup v2 nesting. Without this, the nested dockerd creates its cgroup in
+# "threaded" mode and every container fails with "cannot enter cgroupv2
+# /sys/fs/cgroup/docker with domain controllers -- it is in threaded mode".
+# Same steps as moby's hack/dind and the docker-in-docker devcontainer feature:
+# move our processes out of the root cgroup, then delegate every controller.
+if [ -f /sys/fs/cgroup/cgroup.controllers ]; then
+  log "enabling cgroup v2 nesting"
+  sudo sh -c '
+    mkdir -p /sys/fs/cgroup/init
+    xargs -rn1 < /sys/fs/cgroup/cgroup.procs > /sys/fs/cgroup/init/cgroup.procs 2>/dev/null || :
+    sed -e "s/ / +/g" -e "s/^/+/" < /sys/fs/cgroup/cgroup.controllers > /sys/fs/cgroup/cgroup.subtree_control || :
+  '
+  # A cgroup left behind by an earlier dockerd in threaded mode would be reused.
+  if [ -d /sys/fs/cgroup/docker ]; then
+    sudo find /sys/fs/cgroup/docker -depth -type d -exec rmdir {} \; 2>/dev/null || :
+  fi
+fi
+
 log "starting dockerd (log: $LOG)"
 sudo sh -c "nohup dockerd >'$LOG' 2>&1 &"
 
