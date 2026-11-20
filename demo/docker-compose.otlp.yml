@@ -1,0 +1,17 @@
+# Demo overlay: switch on the ingest service's OpenTelemetry logs receiver
+# (POST /v1/logs on the ingest port, 8081), which is off by default.
+#
+# Used to receive Claude Code's own telemetry events (prompts, tool results,
+# tool decisions, API requests) next to the AI Agent Gateway's records.
+# See apps/docs/docs/connectors/otlp-logs.md for the receiver itself.
+#
+#   docker compose -f docker-compose.yml -f demo/docker-compose.otlp.yml up -d ingest-worker
+#
+# `make up` recreates the stack from docker-compose.yml alone, which turns the
+# receiver off again; re-run the line above afterwards (the gateway repo's
+# demo/setup_claude_code.sh does it for you).
+
+services:
+  ingest-worker:
+    environment:
+      AISOC_OTLP_LOGS_ENABLED: "true"
